@@ -21,8 +21,13 @@ def safe_wrap_fut(fut: typing.Awaitable):
 
 
 class SingleCDPSocket:
-    def __init__(self, websock_url: str, timeout: float = 10, loop: asyncio.AbstractEventLoop = None,
-                 max_size: int = 2 ** 20):
+    def __init__(
+        self,
+        websock_url: str,
+        timeout: float = 10,
+        loop: asyncio.AbstractEventLoop = None,
+        max_size: int = 2**20,
+    ):
         self._task = None
         if not loop:
             loop = asyncio.get_running_loop()
@@ -51,11 +56,13 @@ class SingleCDPSocket:
 
     async def start_session(self, timeout: float = 10):
         try:
-            self._ws: websockets.WebSocketClientProtocol = await websockets.connect(uri=self._url,
-                                                                                    open_timeout=timeout,
-                                                                                    max_size=self._max_size)
+            self._ws: websockets.WebSocketClientProtocol = await websockets.connect(
+                uri=self._url, open_timeout=timeout, max_size=self._max_size
+            )
         except asyncio.TimeoutError:
-            raise asyncio.TimeoutError(f"Couldn't connect to websocket within {timeout} seconds")
+            raise asyncio.TimeoutError(
+                f"Couldn't connect to websocket within {timeout} seconds"
+            )
         self._task = self._loop.create_task(self._rec_coro())
         self._task.add_done_callback(self._exc_handler)
         return self
@@ -69,9 +76,9 @@ class SingleCDPSocket:
 
     async def send(self, method: str, params: dict = None):
         _id = [self._req_count][0]
-        _dict = {'id': _id, 'method': method}
+        _dict = {"id": _id, "method": method}
         if params:
-            _dict['params'] = params
+            _dict["params"] = params
         await self._ws.send(json.dumps(_dict))
         self._req_count += 1
         return _id
@@ -98,9 +105,13 @@ class SingleCDPSocket:
                     # noinspection PyProtectedMember
                     raise self._task._exception
                 else:
-                    raise SocketExcitedError("socket coroutine excited without exception")
-            raise asyncio.TimeoutError(f'got no response for method: "{method}", params: {params}'
-                                       f"\nwithin {timeout} seconds")
+                    raise SocketExcitedError(
+                        "socket coroutine excited without exception"
+                    )
+            raise asyncio.TimeoutError(
+                f'got no response for method: "{method}", params: {params}'
+                f"\nwithin {timeout} seconds"
+            )
 
     def add_listener(self, method: str, callback: callable):
         self._events[method].append(callback)
@@ -110,6 +121,7 @@ class SingleCDPSocket:
 
     def method_iterator(self, method: str):
         from cdp_socket.scripts.abstract import CDPEventIter
+
         return CDPEventIter(method=method, socket=self)
 
     async def wait_for(self, method: str, timeout=None):
@@ -142,9 +154,10 @@ class SingleCDPSocket:
                     data = await self.load_json(data)
                 except Exception as e:
                     from cdp_socket import EXC_HANDLER
+
                     EXC_HANDLER(e)
                     data = {"method": "DecodeError", "params": {"e": e}}
-                err = data.get('error')
+                err = data.get("error")
                 _id = data.get("id")
                 if err is None:
                     if _id is None:
@@ -153,7 +166,9 @@ class SingleCDPSocket:
                         callbacks: callable = self._events[method]
                         for callback in callbacks:
                             await self._handle_callback(callback, params)
-                        for _id, fut_result_setter in list(self._iter_callbacks[method].items()):
+                        for _id, fut_result_setter in list(
+                            self._iter_callbacks[method].items()
+                        ):
                             try:
                                 fut_result_setter(params)
                             except asyncio.InvalidStateError:
@@ -188,12 +203,15 @@ class SingleCDPSocket:
     @staticmethod
     async def _handle_callback(callback: callable, *args, **kwargs):
         from . import EXC_HANDLER
+
         if callback:
+
             async def async_handle(awaitable):
                 try:
                     await awaitable
                 except Exception as e:
                     EXC_HANDLER(e)
+
             try:
                 res = callback(*args, **kwargs)
             except Exception as e:
@@ -203,8 +221,8 @@ class SingleCDPSocket:
                 safe_wrap_fut(async_handle(res))
             return res
 
-    async def close(self, code: int = 1000, reason: str = ''):
-        if self._ws.open:
+    async def close(self, code: int = 1000, reason: str = ""):
+        if self._ws.state == websockets.protocol.State.OPEN:
             try:
                 await self._ws.close(code=code, reason=reason)
             except AttributeError as e:
@@ -237,7 +255,14 @@ class SingleCDPSocket:
 
 
 class CDPSocket:
-    def __init__(self, port: int, host: str = "127.0.0.1", timeout: int = 30, loop=None, max_size: int = 2 ** 20):
+    def __init__(
+        self,
+        port: int,
+        host: str = "127.0.0.1",
+        timeout: int = 30,
+        loop=None,
+        max_size: int = 2**20,
+    ):
         if not loop:
             loop = asyncio.get_event_loop()
         self._port = port
@@ -278,19 +303,26 @@ class CDPSocket:
     async def targets(self):
         return await get_json(self.host, timeout=2)
 
-    async def get_socket(self, target: dict = None, sock_id: str = None,
-                         ensure_new: bool = False, timeout: float or None = 10):
+    async def get_socket(
+        self,
+        target: dict = None,
+        sock_id: str = None,
+        ensure_new: bool = False,
+        timeout: float or None = 10,
+    ):
         if not (target or sock_id) or (target and sock_id):
             return ValueError("expected either target or sock_id")
         if target:
             sock_id = target["id"]
-        sock_url = f'ws://{self.host}/devtools/page/{sock_id}'
+        sock_url = f"ws://{self.host}/devtools/page/{sock_id}"
 
         existing = self.sockets[sock_id]
         if existing and (not ensure_new):
             socket = existing
         else:
-            socket = await SingleCDPSocket(sock_url, timeout=timeout, loop=self._loop, max_size=self._max_size)
+            socket = await SingleCDPSocket(
+                sock_url, timeout=timeout, loop=self._loop, max_size=self._max_size
+            )
             self._sockets[sock_id] = socket
 
             # noinspection PyUnusedLocal
